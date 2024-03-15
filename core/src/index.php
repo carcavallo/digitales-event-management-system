@@ -42,11 +42,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
+date_default_timezone_set("Europe/Zurich");
+
 require_once __DIR__ . "/autoload.php";
 require_once __DIR__ . "/vendor/autoload.php";
+require_once __DIR__ . "/util/utils.php";
 
 use Bramus\Router\Router;
+use controller\IOController;
 use lib\DataRepo\DataRepo;
+
+set_exception_handler(function (Throwable $error) {
+    (new IOController)->writeLog($error->getMessage(), 500);
+});
+
+DataRepo::$callbackError = function () {
+    (new IOController)->sendResponse("error", "Database server not accessible", 503);
+};
 
 $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
 $dotenv->load();
@@ -54,3 +66,39 @@ $dotenv->load();
 $router = new Router();
 $router->setNamespace("controller");
 $router->setBasePath("/api");
+
+$router->set404("IOController@show404");
+
+$router->mount("/auth", function () use ($router) {
+    $router->post("/login", "AuthController@login");
+    $router->post("/register", "AuthController@register");
+    $router->get('/session', 'AuthController@getSession');
+    $router->post("/logout", "AuthController@logout");
+});
+
+/*
+$router->mount('/users', function () use ($router) {
+    $router->get('/', 'UsersController@getUsers');
+    $router->get('/{userId}', 'UsersController@getUser');
+    $router->put('/{userId}', 'UsersController@updateUser');
+    $router->delete('/{userId}', 'UsersController@deleteUser');
+});
+
+$router->mount('/events', function () use ($router) {
+    $router->post('/', '');
+    $router->get('/', '');
+    $router->get('/{eventId}', '');
+    $router->get('/user/{userId}', '');
+    $router->put('/{eventId}', '');
+    $router->delete('/{eventId}', '');
+});
+
+$router->mount('/bookings', function () use ($router) {
+    $router->post('/', '');
+    $router->get('/{userId}', '');
+    $router->put('/{bookingId}', '');
+    $router->delete('/{bookingId}', '');
+});
+*/
+
+$router->run();
