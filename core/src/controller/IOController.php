@@ -15,6 +15,10 @@ class IOController
 {
     protected Logger $logger;
 
+    /**
+     * Constructor of the class. Initializes a logger to write log entries to a file.
+     * @return void
+     */
     public function __construct()
     {
         set_exception_handler(function ($error) {
@@ -36,6 +40,12 @@ class IOController
         $this->logger->pushHandler($handler);
     }
 
+    /**
+     * Checks whether all required POST arguments are present and whether they are empty.
+     * If an argument is missing or empty, an error message is returned.
+     * @param array $args An array with all required arguments.
+     * @return void
+     */
     protected function checkPostArguments(array $args): void
     {
         $error = false;
@@ -58,6 +68,11 @@ class IOController
         }
     }
 
+    /**
+     * Returns a level object based on the specified HTTP status code.
+     * @param int $code The HTTP status code.
+     * @return Level The level object associated with the specified status code.
+     */
     private function getLevel(int $code): Level
     {
         if ($code >= 200 && $code < 300) {
@@ -71,6 +86,15 @@ class IOController
         return Level::Critical;
     }
 
+    /**
+     * Sends an HTTP response as a JSON object and writes the corresponding log entry.
+     * @param string $status The status of the response ("success" or "error").
+     * @param string $message A message to be returned in the response.
+     * @param array|object|null $data An associative array or object containing the data to be returned in the response.
+     * @param int $code The HTTP status code of the response.
+     * @param array|null $context An associative array that replaces placeholders in the message.
+     * @return void
+     */
     public function sendResponse(string $status, string $message = "", array|object $data = null, int $code = 200, ?array $context = []): void
     {
         $response = array(
@@ -93,6 +117,14 @@ class IOController
         exit();
     }
 
+    /**
+     * Writes a log message with the specified code and message to the log file.
+     * The optional context variable makes it possible to replace placeholders in the message with the actual value.
+     * @param string $message The message to be written
+     * @param array|null $context An optional associative array with key-value pairs to be used as placeholders in the message
+     * @param int $code The code of the log message to indicate the severity of the message
+     * @return void
+     */
     public function writeLog(string $message, ?array $context = [], int $code = 200): void
     {
         $message = replace($message, $context);
@@ -107,6 +139,10 @@ class IOController
         }
     }
 
+    /**
+     * Returns an error message that the requested resource was not found.
+     * @return void
+     */
     public function show404(): void
     {
         header("Refresh: 3");
