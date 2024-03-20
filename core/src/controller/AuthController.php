@@ -5,12 +5,18 @@ namespace controller;
 use Exception;
 use lib\DataRepo\DataRepo;
 use model\User;
-use PHPMailer\PHPMailer\PHPMailer;
 use function util\removeArrayKeys;
 use function util\removeArrayValues;
+use util\SendGridMailer;
 
 class AuthController extends IOController
 {
+    private $mailer;
+
+    public function __construct()
+    {
+        $this->mailer = new SendGridMailer($_ENV['SENDGRID_API_KEY']);
+    }
     /**
      * Checks the user's credentials to start a session.
      * If the credentials are valid, a session is started and a success message is returned.
@@ -99,11 +105,12 @@ class AuthController extends IOController
      */
     public function getSession()
     {
-        if (isset($_SESSION['user']['user_id']) && $_SESSION['expires'] > time()) {
+        $this->checkLogin();
+
+        if (isset($_SESSION['user']['user_id'])) {
             $this->sendResponse("success", "User Session retrieved successfully", removeArrayKeys($_SESSION, ['password']));
-        } else {
-            $this->sendResponse("error", "Session expired or not logged in", null, 401);
         }
+
     }   
     
     /**
@@ -113,7 +120,9 @@ class AuthController extends IOController
      */
     public function logout(bool $respond = true): void
     {
-        session_unset();
+        $_SESSION = [];
+        setcookie(session_name(), "", time() - 42000, "/");
+        session_destroy();
 
         if ($respond) {
             $this->sendResponse("success", "Successfully logged out");
@@ -121,16 +130,36 @@ class AuthController extends IOController
     }
 
     /**
+     * Checks if the session has expired.
+     * @return bool
+     */
+    private function isSessionExpired(): bool
+    {
+        return !isset($_SESSION['expires']) || $_SESSION['expires'] < time();
+    }
+
+    /**
+     * Refreshes the session for an active user.
+     */
+    private function refreshSession(): void
+    {
+        $_SESSION['expires'] = time() + $GLOBALS['life_time'];
+        session_regenerate_id(true);
+    }
+    /**
      * Checks whether the user is logged in and returns an error message if the user is not logged in.
      * If the user is not logged in correctly, the user is logged out correctly and completely.
      * @return void
      */
     public function checkLogin(): void
     {
-        if (empty($_SESSION['user']['user_id'])) {
+        if (!isset($_SESSION['user']) || $this->isSessionExpired()) {
             $this->logout(false);
-            $this->sendResponse("error", "You are not logged in", 403);
+            $this->sendResponse("error", "Session expired or not logged in", null, 401);
+            exit();
         }
+
+        $this->refreshSession();
     }
 
     /**
@@ -140,7 +169,6 @@ class AuthController extends IOController
      * a reset link will be sent. This message is sent regardless of whether the email is in the database to prevent
      * information disclosure about registered emails.
      * @return void
-     * @throws Exception If there's an issue sending the email through PHPMailer.
      */
     public function requestPasswordReset(): void
     {
@@ -160,35 +188,22 @@ class AuthController extends IOController
             $user->reset_token_expires = $expires->format('Y-m-d H:i:s');
             DataRepo::update($user);
     
-            $mail = new PHPMailer(true);
-
+            $resetPasswordLink = "http://localhost:3000/reset?token=" . $token;
+    
+            $subject = 'Password Reset Request';
+            $content = "Please click on the following link to reset your password: <a href='{$resetPasswordLink}'>Reset Password</a>";
+    
             try {
-                $mail->SMTPDebug = 0;
-                $mail->isSMTP();
-                $mail->Host = $_ENV['EMAIL_HOST'];
-                $mail->SMTPAuth = true;
-                $mail->Username = $_ENV['EMAIL_USERNAME'];
-                $mail->Password = $_ENV['EMAIL_PASSWORD'];
-                $mail->SMTPSecure = 'tls';
-                $mail->Port = 587;
-                $mail->CharSet = 'UTF-8';
-    
-                $mail->setFrom('alessiopirovino@gmail.com', 'DJSELECT');
-                $mail->addAddress($email);
-    
-                $mail->isHTML(true);
-                $mail->Subject = 'Password Reset Request';
-                $mail->Body = 'Please click on the following link to reset your password: <a href="http://localhost:3000/reset?token=' . $token . '">Reset Password</a>';
-    
-                $mail->send();
+                $this->mailer->sendEmailNotification($email, $subject, $content);
                 $this->sendResponse("success", "If the email is registered, you will receive a password reset link.");
             } catch (Exception $e) {
-                $this->sendResponse("error", "Mailer Error: " . $mail->ErrorInfo, null, 500);
+                $this->sendResponse("error", "Failed to send reset email: " . $e->getMessage(), null, 500);
             }
         } else {
             $this->sendResponse("success", "If the email is registered, you will receive a password reset link.");
         }
     }
+    
     
     /**
      * Confirms the password reset request by checking the provided reset token. It updates the user's password
