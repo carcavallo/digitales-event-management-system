@@ -3,18 +3,10 @@
 error_reporting(E_ALL);
 
 global $life_time;
-global $delete_time;
-global $file_size;
 
-$life_time = 60 * 60 * 24 * 14;
+$life_time = 3600;
 $expire_time = time() + $life_time;
-$delete_time = 60 * 60 * 24;
 
-$file_size = 100000000;
-
-ini_set("memory_limit", "512M");
-ini_set("post_max_size", "256M");
-ini_set("upload_max_filesize", "256M");
 ini_set("session.gc_maxlifetime", (string)$life_time);
 ini_set("session.save_path", __DIR__ . "/sessions");
 
@@ -69,33 +61,34 @@ $router->setBasePath("/api");
 
 $router->set404("IOController@show404");
 
-$router->before('GET|POST|PUT|DELETE', '/users/?', 'AuthController@checkLogin');
-$router->before('GET|POST|PUT|DELETE', '/users/.*', 'AuthController@checkLogin');
-
-$router->before('GET|POST|PUT|DELETE', '/events/?', 'AuthController@checkLogin');
-$router->before('GET|POST|PUT|DELETE', '/events/.*', 'AuthController@checkLogin');
-
-$router->before('GET|POST|PUT|DELETE', '/user-events/?', 'AuthController@checkLogin');
-
-$router->before('GET|POST|PUT|DELETE', '/bookings/?', 'AuthController@checkLogin');
-$router->before('GET|POST|PUT|DELETE', '/bookings/.*', 'AuthController@checkLogin');
-
-$router->before('GET|POST|PUT|DELETE', '/event-bookings/?', 'AuthController@checkLogin');
-
+// Auth routes (accessible to everyone)
 $router->mount("/auth", function () use ($router) {
     $router->post("/login", "AuthController@login");
     $router->post("/register", "AuthController@register");
-    $router->get('/session', 'AuthController@getSession');
+    $router->get('/session', "AuthController@getSession");
     $router->post("/logout", "AuthController@logout");
     $router->post("/reset", "AuthController@requestPasswordReset");
     $router->post("/reset/confirm", "AuthController@confirmResetPassword");
 });
 
+// Apply access control for routes that require specific user roles
+$adminAccess = ['administrator'];
+$eventAndBookingAccess = ['administrator', 'event_manager', 'dj'];
+
+// User management routes (only accessible to admins)
+$router->before('GET|POST|PUT|DELETE', '/users/?', function() use ($adminAccess) {
+    (new AuthController())->checkUserRole($adminAccess);
+});
 $router->mount('/users', function () use ($router) {
     $router->get('/', 'UsersController@getUsers');
     $router->get('/{userId}', 'UsersController@getUser');
     $router->put('/{userId}', 'UsersController@updateUser');
     $router->delete('/{userId}', 'UsersController@deleteUser');
+});
+
+// Events and bookings routes (accessible to admins, event managers, and DJs)
+$router->before('GET|POST|PUT|DELETE', '/events/?', function() use ($eventAndBookingAccess) {
+    (new AuthController())->checkUserRole($eventAndBookingAccess);
 });
 
 $router->mount('/events', function () use ($router) {
@@ -108,6 +101,9 @@ $router->mount('/events', function () use ($router) {
 
 $router->get('/user-events/{userId}', 'EventsController@getUserEvents');
 
+$router->before('GET|POST|PUT|DELETE', '/bookings/?', function() use ($eventAndBookingAccess) {
+    (new AuthController())->checkUserRole($eventAndBookingAccess);
+});
 $router->mount('/bookings', function () use ($router) {
     $router->post('/', 'BookingsController@createBooking');
     $router->get('/{userId}', 'BookingsController@getBookings');
@@ -116,6 +112,5 @@ $router->mount('/bookings', function () use ($router) {
 });
 
 $router->get('/event-bookings/{eventId}', 'BookingsController@getBookingByEventId');
-
 
 $router->run();

@@ -37,7 +37,7 @@ class AuthController extends IOController
         );
 
         if (empty($user) || !password_verify($_POST["password"], $user[0]->password)) {
-            $this->writeLog("Login failed for the user {username} - Login data", ["username" => $_POST["username"]], 401);
+            //$this->writeLog("Login failed for the user {username} - Login data", ["username" => $_POST["username"]], 401);
             $this->sendResponse("error", "Username or password incorrect", null, 401);
         } else {
             $user[0]->last_login = time();
@@ -161,6 +161,21 @@ class AuthController extends IOController
 
         $this->refreshSession();
     }
+
+    /**
+     * Checks whether the logged-in user has the required roles to access a resource.
+     * @param array $requiredRoles The required roles.
+     * @return void
+     */
+    public function checkUserRole(array $requiredRoles): void
+    {
+        $this->checkLogin();
+        if (!in_array($_SESSION['user']['role'], $requiredRoles)) {
+            $this->sendResponse("error", "Unauthorized", null, 403);
+            exit;
+        }
+    }
+
 
     /**
      * Initiates the process for a user to reset their password. It checks for the user's email in the database.
